@@ -1,6 +1,6 @@
 // File: openzeppelin-solidity/contracts/token/ERC20/IERC20.sol
 
-pragma solidity ^0.5.8;
+pragma solidity 0.5.17;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
@@ -79,7 +79,7 @@ interface IERC20 {
 
 // File: openzeppelin-solidity/contracts/math/SafeMath.sol
 
-pragma solidity ^0.5.8;
+pragma solidity 0.5.17;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -189,7 +189,8 @@ library SafeMath {
 
 // File: openzeppelin-solidity/contracts/token/ERC20/ERC20.sol
 
-pragma solidity ^0.5.8;
+pragma solidity 0.5.17;
+
 
 /**
  * @dev Implementation of the `IERC20` interface.
@@ -406,18 +407,32 @@ contract ERC20 is IERC20 {
 
 // File: contracts/RE.sol
 
-pragma solidity ^0.5.8;
+pragma solidity 0.5.17;
 
 contract RE is ERC20 {
     string public constant name = "RE";
     string public constant symbol = "RE";
-    uint256 public constant initialSupply = 2000000000 * (10 ** uint256(decimals));
+    uint256 public constant initialSupply = 2 * (10 ** 9) * (10 ** uint256(decimals));
     uint256 private constant UNIX_DAY_TIME = 86400;
     uint8 public constant decimals = 18;
 
     constructor() public {
-        super._mint(msg.sender, initialSupply);
-        owner = msg.sender;
+        address _owner = 0x8904e01F78107c51aE1Ed16BA63660eA98Cb5C74;
+        address _investor = 0x955C68c3b714c0e2d74F4aB429C93042286d9B1e;
+        address _ecosystem = 0x61b0d15115E35D9Ff7b99D02F5B39F5029724A73;
+        address _airdrop = 0x5e67C1472aA1aB02a78D880F2b39D73491656e0f;
+        address _rnd = 0x08CD5272B46852fF083041AAe6c9906506d96141;
+        address _reserve = 0x18A7A97Df362A9347F88753acF9082E7e73EC024;
+        address _team = 0x585E2621Ec1be5899378F694B58FC908E1AAC445;
+        
+        super._mint(_investor, initialSupply.mul(20).div(100));     // Investor (20%)  : 400,000,000
+        super._mint(_ecosystem, initialSupply.mul(33).div(100));    // Ecosystem (33%) : 660,000,000
+        super._mint(_airdrop, initialSupply.mul(20).div(100));      // Airdrop (20%)   : 400,000,000
+        super._mint(_rnd, initialSupply.mul(5).div(100));           // R&D (5%)        : 100,000,000
+        super._mint(_reserve, initialSupply.mul(15).div(100));      // Reserve (15%)   : 300,000,000
+        super._mint(_team, initialSupply.mul(7).div(100));          // Team (7%)       : 140,000,000
+
+        owner = _owner;
     }
 
     /**
@@ -446,6 +461,7 @@ contract RE is ERC20 {
     function renounceOwnership() external onlyOwner {
         emit OwnershipRenounced(owner);
         owner = address(0);
+        potentialOwner = address(0);
     }
 
     /**
@@ -593,7 +609,7 @@ contract RE is ERC20 {
         require(_value <= super.balanceOf(_from), "Insufficient balance");
         return super.transferFrom(_from, _to, _value);
     }
-    
+
     /**
     *
     * Burn features
@@ -641,7 +657,7 @@ contract RE is ERC20 {
     * @param _holder The address to check the balance.
     */
     function balanceOf(address _holder) public view returns (uint256) {
-        uint256 lockedBalance;
+        uint256 lockedBalance = 0;
         uint256 length = lockInfo[_holder].length;
         for (uint256 i = 0; i < length; i++ ) {
             LockInfo memory acc = lockInfo[_holder][i];
@@ -692,8 +708,16 @@ contract RE is ERC20 {
     * @dev Release expired locked tokens and apply to available balance.
     * @param _holder The address to release expired locked tokens.
     */
-    function releaseLock(address _holder) public onlyOwner returns (bool) {
+    function releaseLockByOwner(address _holder) public onlyOwner returns (bool) {
         _releaseLock(_holder);
+        return true;
+    }
+
+    /**
+    * @dev Release expired locked tokens and apply to available balance.
+    */
+    function releaseLock() public returns (bool) {
+        _releaseLock(msg.sender);
         return true;
     }
 
@@ -728,12 +752,10 @@ contract RE is ERC20 {
             uint256 extraValue
         )
     {
-        
         releaseStartTime = lockInfo[_holder][_idx].releaseStartTime;
         releaseDays = lockInfo[_holder][_idx].releaseDays;
         unitValue = lockInfo[_holder][_idx].unitValue;
         extraValue = lockInfo[_holder][_idx].extraValue;
-        
     }
 
     /**
@@ -744,6 +766,7 @@ contract RE is ERC20 {
     */
     function lock(address _holder, uint256 _value, uint256 _releaseTime) public onlyOwner {
         require(_value > 0, "Invalid lock value");
+        require(_releaseTime > block.timestamp, "Token release time must be after the current time.");
         _releaseLock(_holder);
         require(super.balanceOf(_holder) >= _value, "Insufficient balance");
         _balances[_holder] = _balances[_holder].sub(_value);
@@ -789,11 +812,12 @@ contract RE is ERC20 {
             _releaseDays > 0 && _releaseDays <= 1000,
             "Invalid releaseDays (0 < releaseDays <= 1000"
         );
+        require(_releaseStartTime > block.timestamp, "Token release start time must be after the current time.");
 
         _releaseLock(_holder);
         require(_totalValue <= super.balanceOf(_holder), "Insufficient balance");
 
-        uint256 unitValue = _totalValue.div(10 ** 18).div(_releaseDays).mul(10 ** 18);
+        uint256 unitValue = _totalValue.div(_releaseDays);
         uint256 extraValue = _totalValue.sub(unitValue.mul(_releaseDays));
         
         _balances[_holder] = _balances[_holder].sub(_totalValue);
@@ -861,6 +885,7 @@ contract RE is ERC20 {
     {
         require(_to != address(0), "Invalid address");
         require(_value <= super.balanceOf(owner), "Insufficient balance");
+        require(_releaseTime > block.timestamp, "Token release time must be after the current time.");
 
         _balances[owner] = _balances[owner].sub(_value);
 
@@ -915,8 +940,9 @@ contract RE is ERC20 {
             _releaseDays > 0 && _releaseDays <= 1000,
             "Invalid releaseDays (0 < releaseDays <= 1000)"
         );
+        require(_releaseStartTime > block.timestamp, "Token release start time must be after the current time.");
         
-        uint256 unitValue = _totalValue.div(10 ** 18).div(_releaseDays).mul(10 ** 18);
+        uint256 unitValue = _totalValue.div(_releaseDays);
         uint256 extraValue = _totalValue.sub(unitValue.mul(_releaseDays));
         
         _balances[owner] = _balances[owner].sub(_totalValue);
@@ -965,7 +991,7 @@ contract RE is ERC20 {
     * @param _holder The address to release expired locked tokens.
     */
     function _releaseLock(address _holder) internal {
-        uint256 unlockedValue;
+        uint256 unlockedValue = 0;
         for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
             LockInfo memory acc = lockInfo[_holder][i];
 
